@@ -8,7 +8,11 @@ import uuid
 from db_connection import get_db
 from db_models import User, Visitor, VisitorPhoto, Badge, SystemLog, VisitStatus, VisitPurpose
 from schemas import VisitorCreate, VisitorOut, VisitorUpdate, VisitApproval, PreApprovalCreate
-from auth import get_current_active_user, get_client_ip
+from auth import (
+    get_current_active_user, get_client_ip, 
+    check_visitor_read_permission, check_visitor_write_permission, 
+    check_visitor_checkin_permission, check_visitor_photo_permission
+)
 from config import get_settings
 from error_handlers import NotFoundError, BadRequestError, AuthorizationError
 
@@ -76,6 +80,7 @@ async def register_visitor(
     }
     
     return result
+
 @router.post("/self-register", status_code=status.HTTP_201_CREATED)
 async def self_register_visitor(
     visitor: VisitorCreate,
@@ -171,10 +176,15 @@ async def list_visitors(
 ):
     query = db.query(Visitor)
 
-    # Permissions and filtering based on user role
-    if not current_user.is_admin:
+    # Modified permissions - allow security to view all visitors
+    if current_user.department == "Security":
+        # Security can view all visitors (read-only access)
+        pass  # Don't filter by host
+    elif not current_user.is_admin:
+        # Regular faculty can only see their own visitors
         query = query.filter(Visitor.host_id == current_user.id)
     elif host_id:
+        # Admin with specific host filter
         query = query.filter(Visitor.host_id == host_id)
 
     # Apply query filters
@@ -183,8 +193,12 @@ async def list_visitors(
     if purpose:
         query = query.filter(Visitor.purpose == purpose)
     if start_date:
+        # Fix timezone issue
+        start_date = start_date.replace(tzinfo=None)
         query = query.filter(Visitor.created_at >= start_date)
     if end_date:
+        # Fix timezone issue
+        end_date = end_date.replace(tzinfo=None)
         query = query.filter(Visitor.created_at <= end_date)
 
     # Pagination and ordering
@@ -202,10 +216,12 @@ async def list_visitors(
         has_badge = db.query(Badge).filter(Badge.visitor_id == visitor.id).first() is not None
 
         # Calculate visit duration if both check-in and check-out times exist
-        visit_duration = (
-            (visitor.check_out_time - visitor.check_in_time).total_seconds() / 60
-            if visitor.check_in_time and visitor.check_out_time else None
-        )
+        visit_duration = None
+        if visitor.check_in_time and visitor.check_out_time:
+            # Fix timezone issue
+            check_in = visitor.check_in_time.replace(tzinfo=None)
+            check_out = visitor.check_out_time.replace(tzinfo=None)
+            visit_duration = (check_out - check_in).total_seconds() / 60
 
         result.append({
             "id": visitor.id,
@@ -239,8 +255,8 @@ async def get_visitor(
     if not visitor:
         raise NotFoundError("Visitor", visitor_id)
     
-    # Regular users can only see their own visitors
-    if not current_user.is_admin and visitor.host_id != current_user.id:
+    # Use the permission check function
+    if not check_visitor_read_permission(current_user, visitor.host_id):
         raise AuthorizationError("Not authorized to view this visitor's information")
     
     host = db.query(User).filter(User.id == visitor.host_id).first()
@@ -249,8 +265,10 @@ async def get_visitor(
     
     visit_duration = None
     if visitor.check_in_time and visitor.check_out_time:
-        delta = visitor.check_out_time - visitor.check_in_time
-        visit_duration = delta.total_seconds() / 60  # Duration in minutes
+        # Fix timezone issue
+        check_in = visitor.check_in_time.replace(tzinfo=None)
+        check_out = visitor.check_out_time.replace(tzinfo=None)
+        visit_duration = (check_out - check_in).total_seconds() / 60  # Duration in minutes
     
     result = {
         "id": visitor.id,
@@ -285,8 +303,8 @@ async def update_visitor(
     if not visitor:
         raise NotFoundError("Visitor", visitor_id)
     
-    # Regular users can only update their own visitors
-    if not current_user.is_admin and visitor.host_id != current_user.id:
+    # Use the permission check function
+    if not check_visitor_write_permission(current_user, visitor.host_id):
         raise AuthorizationError("Not authorized to update this visitor's information")
     
     # Don't allow updating if visitor is already checked in or checked out
@@ -329,8 +347,10 @@ async def update_visitor(
     
     visit_duration = None
     if visitor.check_in_time and visitor.check_out_time:
-        delta = visitor.check_out_time - visitor.check_in_time
-        visit_duration = delta.total_seconds() / 60
+        # Fix timezone issue
+        check_in = visitor.check_in_time.replace(tzinfo=None)
+        check_out = visitor.check_out_time.replace(tzinfo=None)
+        visit_duration = (check_out - check_in).total_seconds() / 60
     
     result = {
         "id": visitor.id,
@@ -365,8 +385,8 @@ async def upload_visitor_photo(
     if not visitor:
         raise NotFoundError("Visitor", visitor_id)
     
-    # Regular users can only upload photos for their own visitors
-    if not current_user.is_admin and visitor.host_id != current_user.id:
+    # Use the new photo permission check function
+    if not check_visitor_photo_permission(current_user, visitor.host_id):
         raise AuthorizationError("Not authorized to upload photo for this visitor")
     
     # Validate photo content type
@@ -429,8 +449,8 @@ async def approve_or_reject_visitor(
     if not visitor:
         raise NotFoundError("Visitor", visitor_id)
     
-    # Only the host or admin can approve/reject
-    if not current_user.is_admin and visitor.host_id != current_user.id:
+    # Use permission check function
+    if not check_visitor_write_permission(current_user, visitor.host_id):
         raise AuthorizationError("Not authorized to approve/reject this visitor")
     
     # Don't allow approval/rejection for visitors who are already checked in or out
@@ -519,8 +539,8 @@ async def reject_visitor(
     if not visitor:
         raise NotFoundError("Visitor", visitor_id)
 
-    # Only host or admin can reject
-    if not current_user.is_admin and visitor.host_id != current_user.id:
+    # Use permission check function
+    if not check_visitor_write_permission(current_user, visitor.host_id):
         raise AuthorizationError("Not authorized to reject this visitor")
 
     # Cannot reject a visitor who is already checked in or out
@@ -554,7 +574,6 @@ async def reject_visitor(
         "status": visitor.status.value
     }
 
-
 @router.post("/{visitor_id}/check-in", status_code=status.HTTP_200_OK)
 async def check_in_visitor(
     visitor_id: str,
@@ -565,6 +584,10 @@ async def check_in_visitor(
     visitor = db.query(Visitor).filter(Visitor.id == visitor_id).first()
     if not visitor:
         raise NotFoundError("Visitor", visitor_id)
+    
+    # Use permission check function - allow security to check in
+    if not check_visitor_checkin_permission(current_user, visitor.host_id):
+        raise AuthorizationError("Not authorized to check in this visitor")
     
     # Verify visitor status
     if visitor.status != VisitStatus.APPROVED:
@@ -611,6 +634,10 @@ async def check_out_visitor(
     if not visitor:
         raise NotFoundError("Visitor", visitor_id)
     
+    # Use permission check function - allow security to check out
+    if not check_visitor_checkin_permission(current_user, visitor.host_id):
+        raise AuthorizationError("Not authorized to check out this visitor")
+    
     # Verify visitor status
     if visitor.status != VisitStatus.CHECKED_IN:
         raise BadRequestError(f"Cannot check out visitor with status: {visitor.status}")
@@ -621,7 +648,10 @@ async def check_out_visitor(
     visitor.status = VisitStatus.CHECKED_OUT
     
     # Calculate visit duration
-    delta = timestamp - visitor.check_in_time
+    # Fix timezone issue
+    check_in = visitor.check_in_time.replace(tzinfo=None)
+    check_out = timestamp.replace(tzinfo=None)
+    delta = check_out - check_in
     visit_duration = delta.total_seconds() / 60  # Duration in minutes
     
     # Log the action
@@ -656,8 +686,8 @@ async def delete_visitor(
     if not visitor:
         raise NotFoundError("Visitor", visitor_id)
     
-    # Only allow admin or host to delete
-    if not current_user.is_admin and visitor.host_id != current_user.id:
+    # Use permission check function
+    if not check_visitor_write_permission(current_user, visitor.host_id):
         raise AuthorizationError("Not authorized to delete this visitor")
     
     # Don't allow deletion of visitors who are checked in
@@ -690,7 +720,10 @@ async def create_pre_approval(
     request: Request = None
 ):
     # Check if scheduled time is in the future
-    if pre_approval.scheduled_time <= datetime.utcnow():
+    # Fix timezone issue
+    scheduled_time = pre_approval.scheduled_time.replace(tzinfo=None)
+    now = datetime.utcnow()
+    if scheduled_time <= now:
         raise BadRequestError("Scheduled time must be in the future")
     
     # Create visitor with approved status

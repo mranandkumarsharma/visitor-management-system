@@ -15,21 +15,22 @@ import {
   Avatar,
   Divider,
   Alert,
-  IconButton,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import PersonIcon from "@mui/icons-material/Person";
 import HowToRegIcon from "@mui/icons-material/HowToReg";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import axios from "axios";
+
 import {
   checkInVisitor,
   uploadVisitorPhoto,
+  getVisitors,
 } from "../../services/visitorService";
 import PhotoCapture from "./PhotoCapture";
 import ErrorAlert from "../common/ErrorAlert";
 import Loader from "../common/Loader";
 import { formatDateTime, getStatusColor } from "../../utils/formatters";
-import axios from "axios"; // Make sure axios is imported
 
 const CheckIn = () => {
   const [visitors, setVisitors] = useState([]);
@@ -40,32 +41,35 @@ const CheckIn = () => {
   const [success, setSuccess] = useState(null);
   const [selectedVisitor, setSelectedVisitor] = useState(null);
   const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
-
   const fetchVisitors = async () => {
     try {
-      setLoading(true);
       setError(null);
+      setLoading(true);
 
-      // Direct API call to fetch approved visitors
-      const token =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc0NDM0MDg1Nn0.sqejeJ2-dDDA0RC9aV2qTSUWvpDrZEKYrazn8IjA4K0";
+      const token = localStorage.getItem("token");
+
       const response = await axios.get(
-        "http://localhost:8000/api/v1/visitors/?skip=0&status=approved",
+        "http://127.0.0.1:8000/api/v1/visitors/",
         {
           headers: {
             Authorization: `Bearer ${token}`,
             accept: "application/json",
           },
+          params: {
+            status: "approved", // ✅ only approved visitors
+          },
         }
       );
 
-      // Filter out visitors who have already checked in
-      const approvedVisitors = response.data.filter(
-        (visitor) => !visitor.check_in_time
-      );
+      console.log("Fetched visitors (CheckIn):", response.data);
 
-      setVisitors(approvedVisitors);
-      setFilteredVisitors(approvedVisitors);
+      // Only show approved visitors who have not checked in
+      const filtered = response.data.filter((v) => !v.check_in_time);
+
+      console.log("CheckIn filtered visitors:", filtered);
+
+      setVisitors(filtered);
+      setFilteredVisitors(filtered);
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to fetch visitors");
       console.error("Error fetching visitors:", err);
@@ -73,7 +77,9 @@ const CheckIn = () => {
       setLoading(false);
     }
   };
-
+  useEffect(() => {
+    fetchVisitors();
+  }, []);
   useEffect(() => {
     fetchVisitors();
   }, []);

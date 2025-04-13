@@ -23,7 +23,7 @@ import { checkOutVisitor } from "../../services/visitorService";
 import ErrorAlert from "../common/ErrorAlert";
 import Loader from "../common/Loader";
 import { formatDateTime, getStatusColor } from "../../utils/formatters";
-import axios from "axios"; // Make sure axios is imported
+import axios from "axios";
 
 const CheckOut = () => {
   const [visitors, setVisitors] = useState([]);
@@ -39,11 +39,12 @@ const CheckOut = () => {
       setLoading(true);
       setError(null);
 
-      // Direct API call to fetch checked-in visitors
-      const token =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc0NDM0MDg1Nn0.sqejeJ2-dDDA0RC9aV2qTSUWvpDrZEKYrazn8IjA4K0";
+      // Get token from localStorage
+      const token = localStorage.getItem("token");
+
+      // Direct API call with proper parameters
       const response = await axios.get(
-        "http://localhost:8000/api/v1/visitors/?skip=0",
+        "http://localhost:8000/api/v1/visitors/?skip=0&limit=100&status=checked_in",
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -52,10 +53,14 @@ const CheckOut = () => {
         }
       );
 
+      console.log("API response:", response.data);
+
       // Filter to only include checked-in visitors (those that have check_in_time but no check_out_time)
       const checkedInVisitors = response.data.filter(
         (visitor) => visitor.check_in_time && !visitor.check_out_time
       );
+
+      console.log("Filtered checked-in visitors:", checkedInVisitors);
 
       setVisitors(checkedInVisitors);
       setFilteredVisitors(checkedInVisitors);
@@ -100,19 +105,7 @@ const CheckOut = () => {
       setLoading(true);
       setError(null);
 
-      // You can keep using the checkOutVisitor service function or implement a direct API call here
-      // Direct API implementation:
-      /*
-      const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc0NDM0MDg1Nn0.sqejeJ2-dDDA0RC9aV2qTSUWvpDrZEKYrazn8IjA4K0";
-      await axios.post(`http://localhost:8000/api/v1/visitors/${selectedVisitor.id}/checkout`, {}, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          accept: "application/json"
-        }
-      });
-      */
-
-      // Using the existing service function:
+      // Using the existing service function
       await checkOutVisitor(selectedVisitor.id);
 
       setSuccess(

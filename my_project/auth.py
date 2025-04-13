@@ -1,4 +1,3 @@
-
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -121,6 +120,48 @@ async def get_admin_user(current_user: User = Depends(get_current_active_user)):
             detail="Insufficient permissions. Admin role required."
         )
     return current_user
+
+# Visitor permission helper functions
+def check_visitor_read_permission(current_user: User, visitor_host_id: str) -> bool:
+    """Check if user has permission to read visitor data.
+    
+    Security personnel can read all visitor data.
+    Admins can read all visitor data.
+    Regular users can only read their own visitors' data.
+    """
+    return (current_user.is_admin or 
+            current_user.department == "Security" or 
+            visitor_host_id == current_user.id)
+
+def check_visitor_write_permission(current_user: User, visitor_host_id: str) -> bool:
+    """Check if user has permission to modify visitor data.
+    
+    Only admins and the host of a visitor can modify visitor data.
+    Security personnel cannot modify visitor data unless they are the host.
+    """
+    return current_user.is_admin or visitor_host_id == current_user.id
+
+def check_visitor_checkin_permission(current_user: User, visitor_host_id: str) -> bool:
+    """Check if user has permission to check in/out visitors.
+    
+    Security personnel can check in/out visitors.
+    Admins can check in/out visitors.
+    The host of a visitor can check in/out their visitors.
+    """
+    return (current_user.is_admin or 
+            current_user.department == "Security" or 
+            visitor_host_id == current_user.id)
+
+def check_visitor_photo_permission(current_user: User, visitor_host_id: str) -> bool:
+    """Check if user has permission to upload photos for a visitor.
+    
+    Security personnel can upload photos.
+    Admins can upload photos.
+    The host of a visitor can upload photos.
+    """
+    return (current_user.is_admin or 
+            current_user.department == "Security" or 
+            visitor_host_id == current_user.id)
 
 # Extract client IP address
 def get_client_ip(request: Request) -> str:

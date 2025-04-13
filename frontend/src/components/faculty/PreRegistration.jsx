@@ -182,11 +182,11 @@ const PreRegistration = () => {
                     onChange={handleInputChange}
                     label="Purpose of Visit"
                   >
-                    <MenuItem value="MEETING">Meeting</MenuItem>
-                    <MenuItem value="INTERVIEW">Interview</MenuItem>
-                    <MenuItem value="DELIVERY">Delivery</MenuItem>
-                    <MenuItem value="MAINTENANCE">Maintenance</MenuItem>
-                    <MenuItem value="OTHER">Other</MenuItem>
+                    <MenuItem value="meeting">Meeting</MenuItem>
+                    <MenuItem value="interview">Interview</MenuItem>
+                    <MenuItem value="delivery">Delivery</MenuItem>
+                    <MenuItem value="maintenance">Maintenance</MenuItem>
+                    <MenuItem value="other">Other</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>

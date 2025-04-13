@@ -41,13 +41,20 @@ const ApprovalList = () => {
       setLoading(true);
       setError(null);
 
-      // Get all pending visitors for the current host
+      // Get all visitors for the current host
       const data = await getVisitors({
-        status: "PENDING",
+        status: "pending", // Backend filter
         host_id: user?.id,
       });
 
-      setVisitors(data);
+      // Apply additional frontend filter to ensure only pending visitors
+      const pendingVisitors = data.filter((v) => v.status === "pending");
+
+      console.log("All visitors:", data);
+      console.log("Filtered pending visitors:", pendingVisitors);
+
+      // Update state with only the pending visitors
+      setVisitors(pendingVisitors);
     } catch (err) {
       setError(
         err.response?.data?.detail || "Failed to fetch pending visitors"
@@ -57,7 +64,6 @@ const ApprovalList = () => {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     if (user?.id) {
       fetchPendingVisitors();
